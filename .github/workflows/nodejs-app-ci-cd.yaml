@@ -51,41 +51,45 @@ jobs:
           IMAGE_TAG=${{ steps.get_release_version.outputs.version }}
           echo "✅ Pushed image: ${{ env.DOCKER_HUB_REGISTRY }}/${{ env.DOCKER_HUB_USERNAME }}/nodejs-api:${IMAGE_TAG}"
 
-      - name: Update K8s manifest with new tag
+      # ----------------------------------------
+      # Prepare for Kubernetes deployment
+      # ----------------------------------------
+
+      - name: Install AWS CLI
         run: |
-          IMAGE_TAG=${{ steps.get_release_version.outputs.version }}
-          sed -i \
-            's|^\(\s*image:\s*\).*|\1'"${{ env.DOCKER_HUB_REGISTRY }}/${{ env.DOCKER_HUB_USERNAME }}/nodejs-api:${IMAGE_TAG}"'|' \
-            terraform-eks/k8s/deployment.yaml
+          sudo apt-get update
+          sudo apt-get install -y awscli
 
-          echo "--- Updated terraform-eks/k8s/deployment.yaml ---"
-          cat terraform-eks/k8s/deployment.yaml
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-      # ----------------------------------------------------------------
-      # Continuous-Deployment steps (comment out for now; uncomment later)
-      # ----------------------------------------------------------------
+      - name: Ensure k8s Deployment exists
+        run: |
+          # load your cluster context
+          aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
 
-      # - name: Install AWS CLI
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt-get install -y awscli
+          # only apply the manifest if the Deployment is missing
+          if ! kubectl get deployment nodejs-api --namespace default; then
+            kubectl apply -f terraform-eks/k8s/deployment.yaml
+          fi
 
-      # - name: Configure AWS CLI
-      #   run: |
-      #     aws configure set aws_access_key_id     ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      #     aws configure set default.region        us-east-1
+      # ----------------------------------------
+      # Zero-downtime rollout
+      # ----------------------------------------
 
-      # - name: Deploy to EKS
-      #   run: |
-      #     aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
-      #     kubectl apply -f terraform-eks/k8s/deployment.yaml
-      #     kubectl apply -f terraform-eks/k8s/service.yaml
+      - name: Deploy with zero-downtime
+        run: |
+          # refresh context (safe to repeat)
+          aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
 
-      # - name: Restart Deployment
-      #   run: |
-      #     kubectl rollout restart deployment nodejs-api
+          # rolling-update image
+          kubectl set image deployment/nodejs-api \
+            nodejs-api=${{ env.DOCKER_HUB_REGISTRY }}/${{ env.DOCKER_HUB_USERNAME }}/nodejs-api:${{ steps.get_release_version.outputs.IMAGE_TAG }} \
+            --record
 
-      # - name: Verify Deployment
-      #   run: |
-      #     kubectl get pods --namespace default
+          # wait until the new pods are ready
+          kubectl rollout status deployment/nodejs-api --timeout=3m

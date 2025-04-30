@@ -19,8 +19,8 @@ spec:
         ports:
         - containerPort: 3000
         env:
-        - name: WEATHER_API_KEY
+        - name: OWM_API_KEY
           valueFrom:
             secretKeyRef:
               name: nodejs-api-secrets
-              key: WEATHER_API_KEY
+              key: OWM_API_KEY

@@ -1,0 +1,72 @@
+name: Node.js REST API CI/CD
+
+on:
+  release:
+    types:
+      - created
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+
+    env:
+      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+      DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      DOCKER_HUB_REGISTRY: ${{ secrets.DOCKER_HUB_REGISTRY }}
+      WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+
+      - name: Configure AWS CLI
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set default.region us-east-1
+          aws eks --region us-east-1 update-kubeconfig --name my-eks-cluster
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Get Release Version
+        id: get_release_version
+        run: |
+          echo "GitHub_REF: ${GITHUB_REF}"
+          echo "::set-output name=version::$(echo ${GITHUB_REF#refs/tags/})"
+
+      - name: Build Docker Image
+        run: docker build -t "${DOCKER_HUB_REGISTRY}/${DOCKER_HUB_USERNAME}/nodejs-api:${{ steps.get_release_version.outputs.version }}" .
+
+      - name: Log in to Docker Hub
+        run: echo "${DOCKER_HUB_PASSWORD}" | docker login -u "${DOCKER_HUB_USERNAME}" --password-stdin "${DOCKER_HUB_REGISTRY}"
+
+      - name: Push Docker Image to Docker Hub
+        run: docker push "${DOCKER_HUB_REGISTRY}/${DOCKER_HUB_USERNAME}/nodejs-api:${{ steps.get_release_version.outputs.version }}"
+
+      - name: Deploy to EKS
+        run: |
+          aws eks --region us-east-1 update-kubeconfig --name my-eks-cluster
+          kubectl apply -f terraform-eks/k8s
+
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+
+      - name: Restart Deployment
+        run: kubectl rollout restart deployment nodejs-api
+
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+
+      - name: Verify Deployment
+        run: kubectl get pods --namespace default

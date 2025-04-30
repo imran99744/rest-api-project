@@ -55,41 +55,41 @@ jobs:
       # Prepare for Kubernetes deployment
       # ----------------------------------------
 
-      - name: Install AWS CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y awscli
+      # - name: Install AWS CLI
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y awscli
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v2
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: us-east-1
 
-      - name: Ensure k8s Deployment exists
-        run: |
-          # load your cluster context
-          aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
+      # - name: Ensure k8s Deployment exists
+      #   run: |
+      #     # load your cluster context
+      #     aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
 
-          # only apply the manifest if the Deployment is missing
-          if ! kubectl get deployment nodejs-api --namespace default; then
-            kubectl apply -f terraform-eks/k8s/deployment.yaml
-          fi
+      #     # only apply the manifest if the Deployment is missing
+      #     if ! kubectl get deployment nodejs-api --namespace default; then
+      #       kubectl apply -f terraform-eks/k8s/deployment.yaml
+      #     fi
 
-      # ----------------------------------------
-      # Zero-downtime rollout
-      # ----------------------------------------
+      # # ----------------------------------------
+      # # Zero-downtime rollout
+      # # ----------------------------------------
 
-      - name: Deploy with zero-downtime
-        run: |
-          # refresh context (safe to repeat)
-          aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
+      # - name: Deploy with zero-downtime
+      #   run: |
+      #     # refresh context (safe to repeat)
+      #     aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
 
-          # rolling-update image
-          kubectl set image deployment/nodejs-api \
-            nodejs-api=${{ env.DOCKER_HUB_REGISTRY }}/${{ env.DOCKER_HUB_USERNAME }}/nodejs-api:${{ steps.get_release_version.outputs.IMAGE_TAG }} \
-            --record
+      #     # rolling-update image
+      #     kubectl set image deployment/nodejs-api \
+      #       nodejs-api=${{ env.DOCKER_HUB_REGISTRY }}/${{ env.DOCKER_HUB_USERNAME }}/nodejs-api:${{ steps.get_release_version.outputs.IMAGE_TAG }} \
+      #       --record
 
-          # wait until the new pods are ready
-          kubectl rollout status deployment/nodejs-api --timeout=3m
+      #     # wait until the new pods are ready
+      #     kubectl rollout status deployment/nodejs-api --timeout=3m

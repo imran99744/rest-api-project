@@ -1,27 +1,25 @@
-FROM node:18-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Copy package files first for better caching
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 COPY package*.json ./
 
-# Install all dependencies (including devDependencies)
-RUN npm install
+RUN npm ci --only=production && npm cache clean --force
 
-# Copy app source
 COPY . .
 
-# Create non-root user
-RUN addgroup -g 1001 appgroup && \
-    adduser -u 1001 -G appgroup -D appuser && \
-    chown -R appuser:appgroup /app
+RUN chown -R appuser:appuser /app
 
 USER appuser
 
-# Default environment variables
-ENV NODE_ENV=development
-ENV PORT=3000
-
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+ENV NODE_ENV=production
+
+# Set healthcheck to verify container health
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+CMD ["node", "server.js"]

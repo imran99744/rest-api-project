@@ -39,7 +39,7 @@ app.get('/api/hello', async (req, res) => {
     });
   } catch (error) {
     console.error('Weather API Error:', error.message);
-    return res.json({  // Return 200 instead of 500 for development
+    return res.json({
       hostname: os.hostname(),
       datetime: dayjs().format('YYMMDDHHmm'),
       version: VERSION,
